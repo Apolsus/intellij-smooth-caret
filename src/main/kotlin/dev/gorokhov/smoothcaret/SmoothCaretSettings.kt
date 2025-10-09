@@ -10,15 +10,11 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 )
 class SmoothCaretSettings : PersistentStateComponent<SmoothCaretSettings> {
 
-    enum class CaretStyle { BLOCK, LINE, UNDERSCORE }
-
     enum class BlinkingStyle { BLINK, SMOOTH, PHASE, EXPAND, SOLID }
 
     var isEnabled: Boolean = true
     var replaceDefaultCaret: Boolean = true
     var caretWidth: Int = 2
-    var caretStyle: CaretStyle = CaretStyle.LINE
-    var caretColor: String = "CARET_COLOR"
 
     var blinkInterval: Int = 850
     var blinkingStyle: BlinkingStyle = BlinkingStyle.BLINK
@@ -35,7 +31,6 @@ class SmoothCaretSettings : PersistentStateComponent<SmoothCaretSettings> {
         isEnabled = true
         blinkInterval = 850
         blinkingStyle = BlinkingStyle.BLINK
-        caretStyle = CaretStyle.LINE
         caretWidth = 2
         caretHeightMargins = 2
         smoothness = 0.15f
@@ -51,4 +46,3 @@ class SmoothCaretSettings : PersistentStateComponent<SmoothCaretSettings> {
         XmlSerializerUtil.copyBean(state, this)
     }
 }
-
