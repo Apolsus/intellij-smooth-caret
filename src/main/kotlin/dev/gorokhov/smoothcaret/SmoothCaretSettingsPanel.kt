@@ -277,8 +277,35 @@ class SmoothCaretSettingsPanel(private val settings: SmoothCaretSettings) {
 
     fun getPanel(): JPanel = panel
 
-    fun isModified(): Boolean = true
+    fun isModified(): Boolean {
+        if (blinkingStyleComboBox.selectedItem != settings.blinkingStyle) return true
+        if (adaptiveSpeedCheckbox.isSelected != settings.adaptiveSpeed) return true
+        if (sliderComponents.size >= 4) {
+            val blinkIntervalVal = sliderComponents[0].first.value
+            if (blinkIntervalVal != settings.blinkInterval) return true
+
+            val smoothnessVal = sliderComponents[1].first.value / 100f
+            if (smoothnessVal != settings.smoothness) return true
+
+            val catchupVal = sliderComponents[2].first.value / 100f
+            if (catchupVal != settings.catchupSpeed) return true
+
+            val maxCatchupVal = sliderComponents[3].first.value / 100f
+            if (maxCatchupVal != settings.maxCatchupSpeed) return true
+        }
+
+        return false
+    }
 
     fun apply() {
+        settings.blinkingStyle = blinkingStyleComboBox.selectedItem as SmoothCaretSettings.BlinkingStyle
+        settings.adaptiveSpeed = adaptiveSpeedCheckbox.isSelected
+
+        if (sliderComponents.size >= 4) {
+            settings.blinkInterval = sliderComponents[0].first.value
+            settings.smoothness = sliderComponents[1].first.value / 100f
+            settings.catchupSpeed = sliderComponents[2].first.value / 100f
+            settings.maxCatchupSpeed = sliderComponents[3].first.value / 100f
+        }
     }
 }

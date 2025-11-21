@@ -42,6 +42,9 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
         val highlighter = markupModel.addRangeHighlighter(
             0, docLength, HighlighterLayer.LAST + 1, null, HighlighterTargetArea.EXACT_RANGE
         )
+        // 设置贪婪属性，自动扩展覆盖范围，避免频繁重建
+        highlighter.isGreedyToLeft = true
+        highlighter.isGreedyToRight = true
         highlighters[editor] = highlighter
 
         val renderer = SmoothCaretRenderer(settings)
@@ -56,51 +59,18 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
             }
         }
 
-        val documentListener = object : DocumentListener {
-            override fun documentChanged(event: DocumentEvent) {
-                val newLength = editor.document.textLength
-                val currentHighlighter = highlighters[editor]
-
-                if (currentHighlighter != null && newLength > 0) {
-                    val startOffset = currentHighlighter.startOffset
-                    val endOffset = currentHighlighter.endOffset
-
-                    if (startOffset == 0 && endOffset != newLength) {
-                        try {
-                            currentHighlighter.gutterIconRenderer = null
-                            val editorMarkupModel = editor.markupModel
-                            editorMarkupModel.removeHighlighter(currentHighlighter)
-
-                            val newHighlighter = editorMarkupModel.addRangeHighlighter(
-                                0, newLength, HighlighterLayer.LAST + 1, null, HighlighterTargetArea.EXACT_RANGE
-                            )
-                            newHighlighter.customRenderer = currentHighlighter.customRenderer
-                            highlighters[editor] = newHighlighter
-                        } catch (e: Exception) {
-                        }
-                    }
-                }
-            }
-        }
-
-        editor.document.addDocumentListener(documentListener)
         editor.caretModel.addCaretListener(caretListener)
         editor.putUserData(CARET_LISTENER_KEY, caretListener)
-        editor.putUserData(DOCUMENT_LISTENER_KEY, documentListener)
     }
 
     private fun shouldSkipEditor(editor: Editor): Boolean {
-        return editor.editorKind != EditorKind.MAIN_EDITOR;
+        return editor.editorKind != EditorKind.MAIN_EDITOR
     }
 
     override fun editorReleased(event: EditorFactoryEvent) {
         val editor = event.editor
 
         event.editor.colorsScheme.setColor(EditorColors.CARET_COLOR, null)
-
-        editor.getUserData(DOCUMENT_LISTENER_KEY)?.let { listener ->
-            editor.document.removeDocumentListener(listener)
-        }
 
         editor.getUserData(CARET_LISTENER_KEY)?.let { listener ->
             editor.caretModel.removeCaretListener(listener)
@@ -115,4 +85,3 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
 }
 
 private val CARET_LISTENER_KEY = com.intellij.openapi.util.Key<CaretListener>("SMOOTH_CARET_LISTENER")
-private val DOCUMENT_LISTENER_KEY = com.intellij.openapi.util.Key<DocumentListener>("SMOOTH_CARET_DOCUMENT_LISTENER")

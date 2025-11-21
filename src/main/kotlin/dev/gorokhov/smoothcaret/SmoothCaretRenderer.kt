@@ -5,7 +5,6 @@ import com.intellij.openapi.editor.CaretVisualAttributes
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.markup.CustomHighlighterRenderer
 import com.intellij.openapi.editor.markup.RangeHighlighter
-import com.intellij.openapi.util.TextRange
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.GraphicsEnvironment
@@ -196,8 +195,10 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
         val logicalPositionToOffset = editor.logicalPositionToOffset(caret.logicalPosition)
         val endOffset = min(logicalPositionToOffset + 1, editor.document.textLength)
         val startOffset = max(endOffset - 1, 0)
-        return if (TextRange.isProperRange(startOffset, endOffset)) {
-            editor.document.getText(TextRange(startOffset, endOffset))[0]
+
+        val chars = editor.document.charsSequence
+        return if (startOffset < endOffset && startOffset >= 0 && endOffset <= chars.length) {
+            chars[startOffset]
         } else {
             default
         }
@@ -269,7 +270,13 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                 if (!editor.isDisposed) {
                     val timeSinceLastMove = System.currentTimeMillis() - lastMoveTime
                     if (timeSinceLastMove > resumeBlinkDelay) {
-                        editor.contentComponent.repaint()
+                        val pad = 2
+                        val charW = if (cachedCharWidth > 0) cachedCharWidth else 8
+                        val caretWidth = max(settings.caretWidth, charW)
+                        val caretHeight = editor.lineHeight - (settings.caretHeightMargins * 2)
+
+                        val bounds = accumulateCurrentCaretBounds(caretWidth, caretHeight, pad)
+                        clampAndRepaint(editor, bounds, fallbackFull = false)
                     }
                 } else {
                     blinkTimer?.stop()
@@ -337,11 +344,14 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                 if (!editor.isDisposed) {
                     var needsRepaint = false
 
-                    if (settings.adaptiveSpeed && (cachedEditor != editor || cachedCharWidth == 0)) {
-                        cachedCharWidth =
-                            editor.component.getFontMetrics(editor.colorsScheme.getFont(null)).charWidth('m')
-                        cachedEditor = editor
-                    }
+                    ensureCharWidthCached(editor)
+
+                    val pad = 2
+                    val charW = if (cachedCharWidth > 0) cachedCharWidth else 8
+                    val caretWidth = max(settings.caretWidth, charW)
+                    val caretHeight = editor.lineHeight - (settings.caretHeightMargins * 2)
+
+                    val bounds = Bounds()
 
                     caretPositions.values.forEach { caretPos ->
                         val dx = caretPos.targetX - caretPos.currentX
@@ -350,22 +360,36 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                         if (abs(dx) > 0 || abs(dy) > 0.01) {
                             val speedFactor = if (settings.adaptiveSpeed) {
                                 when {
-                                    abs(dx) > cachedCharWidth * 2 -> settings.maxCatchupSpeed
-                                    abs(dx) > cachedCharWidth -> settings.catchupSpeed
+                                    abs(dx) > charW * 2 -> settings.maxCatchupSpeed
+                                    abs(dx) > charW -> settings.catchupSpeed
                                     else -> settings.smoothness
                                 }
                             } else {
                                 settings.smoothness
                             }
 
-                            caretPos.currentX += dx * speedFactor
-                            caretPos.currentY += dy * speedFactor
+                            val oldX = caretPos.currentX
+                            val oldY = caretPos.currentY
+                            val newX = oldX + dx * speedFactor
+                            val newY = oldY + dy * speedFactor
+
+                            // 更新位置
+                            caretPos.currentX = newX
+                            caretPos.currentY = newY
                             needsRepaint = true
+
+                            // 计算脏区（包含旧位置与新位置）
+                            val minRectX = round(min(oldX, newX)).toInt() - pad
+                            val minRectY = round(min(oldY, newY)).toInt() + settings.caretHeightMargins - pad
+                            val maxRectX = round(max(oldX, newX)).toInt() + caretWidth + pad
+                            val maxRectY = round(max(oldY, newY)).toInt() + settings.caretHeightMargins + caretHeight + pad
+
+                            bounds.add(minRectX, minRectY, maxRectX, maxRectY)
                         }
                     }
 
                     if (needsRepaint) {
-                        editor.contentComponent.repaint()
+                        clampAndRepaint(editor, bounds, fallbackFull = true)
                     }
                 } else {
                     timer?.stop()
@@ -373,6 +397,61 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                 }
             }
             timer?.start()
+        }
+    }
+
+    private fun ensureCharWidthCached(editor: Editor) {
+        if (cachedEditor != editor || cachedCharWidth == 0) {
+            cachedCharWidth = editor.component
+                .getFontMetrics(editor.colorsScheme.getFont(null))
+                .charWidth('m')
+            cachedEditor = editor
+        }
+    }
+
+    private data class Bounds(var minX: Int = Int.MAX_VALUE,
+                              var minY: Int = Int.MAX_VALUE,
+                              var maxX: Int = Int.MIN_VALUE,
+                              var maxY: Int = Int.MIN_VALUE) {
+        fun add(xMin: Int, yMin: Int, xMax: Int, yMax: Int) {
+            minX = min(minX, xMin)
+            minY = min(minY, yMin)
+            maxX = max(maxX, xMax)
+            maxY = max(maxY, yMax)
+        }
+        fun isValid(): Boolean = minX < maxX && minY < maxY
+    }
+
+    private fun accumulateCurrentCaretBounds(caretWidth: Int, caretHeight: Int, pad: Int): Bounds {
+        val b = Bounds()
+        caretPositions.values.forEach { pos ->
+            if (pos.currentX.isFinite() && pos.currentY.isFinite()) {
+                val x = round(pos.currentX).toInt()
+                val y = round(pos.currentY).toInt() + settings.caretHeightMargins
+                b.add(x - pad, y - pad, x + caretWidth + pad, y + caretHeight + pad)
+            }
+        }
+        return b
+    }
+
+    private fun clampAndRepaint(editor: Editor, bounds: Bounds, fallbackFull: Boolean) {
+        if (!bounds.isValid()) {
+            if (fallbackFull) editor.contentComponent.repaint()
+            return
+        }
+        val comp = editor.contentComponent
+        val bx = 0
+        val by = 0
+        val bw = comp.width
+        val bh = comp.height
+        val rx = max(bounds.minX, bx)
+        val ry = max(bounds.minY, by)
+        val rw = min(bounds.maxX, bx + bw) - rx
+        val rh = min(bounds.maxY, by + bh) - ry
+        if (rw > 0 && rh > 0) {
+            comp.repaint(rx, ry, rw, rh)
+        } else if (fallbackFull) {
+            comp.repaint()
         }
     }
 }
