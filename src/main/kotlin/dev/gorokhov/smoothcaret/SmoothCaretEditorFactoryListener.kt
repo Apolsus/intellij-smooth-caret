@@ -23,17 +23,19 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
 
         if (shouldSkipEditor(editor)) return
 
-        editor.settings.apply {
-            isBlinkCaret = false
-            isBlockCursor = false
-            isRightMarginShown = false
-            lineCursorWidth = 0
-            if (settings.replaceDefaultCaret) {
-                isCaretRowShown = false
+        fun hideDefaultCaret() {
+            editor.settings.apply {
+                isBlinkCaret = false
+                isBlockCursor = false
+                lineCursorWidth = 0
+                if (settings.replaceDefaultCaret) {
+                    isCaretRowShown = false
+                }
             }
+            editor.colorsScheme.setColor(EditorColors.CARET_COLOR, Color(0, 0, 0, 0))
         }
 
-        editor.colorsScheme.setColor(EditorColors.CARET_COLOR, Color(0, 0, 0, 0))
+        hideDefaultCaret()
 
         val markupModel = editor.markupModel
         val docLength = editor.document.textLength
@@ -48,6 +50,7 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
         val caretListener = object : CaretListener {
             override fun caretPositionChanged(event: CaretEvent) {
                 if (settings.isEnabled && editor.contentComponent.isShowing) {
+                    hideDefaultCaret()
                     editor.contentComponent.repaint()
                 }
             }
