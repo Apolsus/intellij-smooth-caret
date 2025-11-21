@@ -6,6 +6,8 @@ build/
 
 ### IntelliJ IDEA ###
 .idea/
+.intellijPlatform/
+.kotlin/
 *.iws
 *.iml
 *.ipr
