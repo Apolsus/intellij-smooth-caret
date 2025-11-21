@@ -64,7 +64,7 @@ class SmoothCaretEditorFactoryListener : EditorFactoryListener {
     }
 
     private fun shouldSkipEditor(editor: Editor): Boolean {
-        return editor.editorKind != EditorKind.MAIN_EDITOR
+        return editor.editorKind != EditorKind.MAIN_EDITOR && editor.editorKind != EditorKind.DIFF
     }
 
     override fun editorReleased(event: EditorFactoryEvent) {
