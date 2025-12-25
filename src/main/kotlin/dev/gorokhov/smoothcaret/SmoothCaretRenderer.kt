@@ -7,22 +7,15 @@ import com.intellij.openapi.editor.markup.CustomHighlighterRenderer
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import java.awt.Graphics
 import java.awt.Graphics2D
-import java.awt.GraphicsEnvironment
 import java.awt.RenderingHints
 import java.awt.geom.Point2D
 import javax.swing.Timer
-import kotlin.math.abs
-import kotlin.math.min
-import kotlin.math.max
-import kotlin.math.round
-import kotlin.math.sin
+import kotlin.math.*
 
 class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHighlighterRenderer {
     private val caretPositions = mutableMapOf<Caret, CaretPosition>()
     private var timer: Timer? = null
     private var lastEditor: Editor? = null
-
-    private var cachedRefreshRate: Int = -1
 
     private var blinkStartTime = System.currentTimeMillis()
     private var lastMoveTime = System.currentTimeMillis()
@@ -142,11 +135,13 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                     CaretVisualAttributes.Shape.DEFAULT -> {
                         g2d.fillRect(caretX, caretY + yOffset, settings.caretWidth, scaledHeight)
                     }
+
                     CaretVisualAttributes.Shape.BOX,
                     CaretVisualAttributes.Shape.BLOCK -> {
                         val nextCharWidth = updateNextCharWidth(caret)
                         g2d.fillRect(caretX, caretY + yOffset, nextCharWidth, scaledHeight)
                     }
+
                     CaretVisualAttributes.Shape.UNDERSCORE -> {
                         val underscoreY = if (blinkValue.scaleY < 1.0f) {
                             caretY + caretHeight - 2 + (2 - (2 * blinkValue.scaleY).toInt()) / 2
@@ -172,7 +167,7 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
     }
 
     /** Update the cached value of [cachedNextCharWidth] if [cachedNextChar] has changed since the last computation */
-    private fun updateNextCharWidth(caret: Caret) : Int {
+    private fun updateNextCharWidth(caret: Caret): Int {
         val editor = caret.editor
         val nextChar = getNextCharFromCursorOrDefault(editor, caret, 'm')
         if (nextChar != cachedNextChar) {
@@ -263,7 +258,7 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
 
     private fun ensureBlinkTimerStarted(editor: Editor) {
         if (blinkTimer == null && settings.blinkingStyle != SmoothCaretSettings.BlinkingStyle.SOLID) {
-            val refreshRate = getScreenRefreshRate()
+            val refreshRate = getScreenRefreshRate(editor)
             val delay = 1000 / refreshRate
 
             blinkTimer = Timer(delay) {
@@ -312,32 +307,21 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
         caretPos.targetY = caretPos.currentY
     }
 
-    private fun getScreenRefreshRate(): Int {
-        if (cachedRefreshRate > 0) {
-            return cachedRefreshRate
+    private fun getScreenRefreshRate(editor: Editor): Int {
+        val device = editor.contentComponent.graphicsConfiguration.device
+        val mode = device.displayMode
+        var refreshRate = mode.refreshRate
+
+        if (refreshRate <= 0) {
+            refreshRate = 60
         }
 
-        val ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
-        val gd = ge.screenDevices
-        var refreshRate = 60
-
-        if (gd.isNotEmpty()) {
-            val mainDisplay = gd[0]
-            val mode = mainDisplay.displayMode
-            if (mode.refreshRate > 0) {
-                refreshRate = mode.refreshRate
-            }
-        }
-
-        refreshRate = refreshRate.coerceIn(30, 240)
-        cachedRefreshRate = refreshRate
-
-        return refreshRate
+        return refreshRate.coerceIn(30, 240)
     }
 
     private fun ensureTimerStarted(editor: Editor) {
         if (timer == null) {
-            val refreshRate = getScreenRefreshRate()
+            val refreshRate = getScreenRefreshRate(editor)
             val delay = 1000 / refreshRate
 
             timer = Timer(delay) {
@@ -382,7 +366,8 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
                             val minRectX = round(min(oldX, newX)).toInt() - pad
                             val minRectY = round(min(oldY, newY)).toInt() + settings.caretHeightMargins - pad
                             val maxRectX = round(max(oldX, newX)).toInt() + caretWidth + pad
-                            val maxRectY = round(max(oldY, newY)).toInt() + settings.caretHeightMargins + caretHeight + pad
+                            val maxRectY =
+                                round(max(oldY, newY)).toInt() + settings.caretHeightMargins + caretHeight + pad
 
                             bounds.add(minRectX, minRectY, maxRectX, maxRectY)
                         }
@@ -409,16 +394,19 @@ class SmoothCaretRenderer(private val settings: SmoothCaretSettings) : CustomHig
         }
     }
 
-    private data class Bounds(var minX: Int = Int.MAX_VALUE,
-                              var minY: Int = Int.MAX_VALUE,
-                              var maxX: Int = Int.MIN_VALUE,
-                              var maxY: Int = Int.MIN_VALUE) {
+    private data class Bounds(
+        var minX: Int = Int.MAX_VALUE,
+        var minY: Int = Int.MAX_VALUE,
+        var maxX: Int = Int.MIN_VALUE,
+        var maxY: Int = Int.MIN_VALUE
+    ) {
         fun add(xMin: Int, yMin: Int, xMax: Int, yMax: Int) {
             minX = min(minX, xMin)
             minY = min(minY, yMin)
             maxX = max(maxX, xMax)
             maxY = max(maxY, yMax)
         }
+
         fun isValid(): Boolean = minX < maxX && minY < maxY
     }
 
